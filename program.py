@@ -1,5 +1,6 @@
 import os
 import cv2
+import numpy as np
 import pytesseract
 from typing import Optional, List
 import argparse
@@ -188,5 +189,4 @@ def main():
     )
 
 if __name__ == '__main__':
-    import numpy as np  # Required for image processing
     main()
