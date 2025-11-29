@@ -1,4 +1,4 @@
-pip install opencv-python>=4.5.0
-pip install pillow>=9.0.0
-pip install pytesseract>=0.3.8
-pip install numpy>=1.21.0
+opencv-python>=4.5.0
+pillow>=9.0.0
+pytesseract>=0.3.8
+numpy>=1.21.0

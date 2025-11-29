@@ -37,13 +37,13 @@ Advanced OCR tool for extracting text from images with preprocessing and paralle
 1. Basic Command:
    
    `
-   python text_extractor.py -i input_images -o output_texts
+   python program.py -i input_images -o output_texts
    `
 
 3. Advanced Usage:
    
    `
-   python text_extractor.py \
+   python program.py \
   -i ./photos \
   -o ./extracted_texts \
   --lang eng+chi_sim \

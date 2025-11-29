@@ -1,5 +1,6 @@
 import os
 import cv2
+import numpy as np
 import pytesseract
 from typing import Optional, List
 import argparse
@@ -12,6 +13,12 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 class TextExtractor:
+    # Preprocessing constants for optimal OCR performance
+    MIN_HEIGHT_FOR_UPSCALE = 500  # Images smaller than this will be upscaled
+    UPSCALE_FACTOR = 2  # Factor to scale small images
+    BLOCK_SIZE_UPSCALED = 15  # Adaptive threshold block size for upscaled images
+    BLOCK_SIZE_NORMAL = 11  # Adaptive threshold block size for normal images
+    
     def __init__(self, lang: str = 'chi_sim', psm: int = 6, preprocess: bool = True):
         """
         Initialize the TextExtractor with configuration options.
@@ -28,6 +35,7 @@ class TextExtractor:
     def clean_image(self, image) -> Optional[cv2.Mat]:
         """
         Clean the image to improve OCR accuracy.
+        Optimized for novel text extraction with both small and large fonts.
         
         Args:
             image: Input image as numpy array
@@ -39,23 +47,30 @@ class TextExtractor:
             # Convert to grayscale
             gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
             
-            # Denoising
-            denoised = cv2.fastNlMeansDenoising(gray, None, h=10, templateWindowSize=7, searchWindowSize=21)
+            # Get image dimensions to adapt processing
+            height, width = gray.shape
             
-            # Adaptive thresholding
+            # Upscale small images to improve OCR on small fonts
+            # Tesseract works best with text height of 20-30 pixels
+            scale_factor = 1
+            if height < self.MIN_HEIGHT_FOR_UPSCALE:
+                scale_factor = self.UPSCALE_FACTOR
+                gray = cv2.resize(gray, None, fx=scale_factor, fy=scale_factor, 
+                                 interpolation=cv2.INTER_CUBIC)
+            
+            # Light denoising - reduced strength to preserve small text details
+            denoised = cv2.fastNlMeansDenoising(gray, None, h=5, 
+                                                templateWindowSize=7, 
+                                                searchWindowSize=21)
+            
+            # Adaptive thresholding with larger block size for better text preservation
+            # Block size should be odd and larger for varied text sizes
+            block_size = self.BLOCK_SIZE_UPSCALED if scale_factor > 1 else self.BLOCK_SIZE_NORMAL
             thresh = cv2.adaptiveThreshold(denoised, 255, 
                                           cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
-                                          cv2.THRESH_BINARY, 11, 2)
+                                          cv2.THRESH_BINARY, block_size, 2)
             
-            # Morphological operations
-            kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
-            cleaned = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel)
-            
-            # Sharpening
-            kernel_sharp = np.array([[-1,-1,-1], [-1,9,-1], [-1,-1,-1]])
-            sharpened = cv2.filter2D(cleaned, -1, kernel_sharp)
-            
-            return sharpened
+            return thresh
         except Exception as e:
             logger.error(f"Image preprocessing failed: {e}")
             return None
@@ -188,5 +203,4 @@ def main():
     )
 
 if __name__ == '__main__':
-    import numpy as np  # Required for image processing
     main()
