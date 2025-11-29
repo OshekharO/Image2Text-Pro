@@ -29,6 +29,7 @@ class TextExtractor:
     def clean_image(self, image) -> Optional[cv2.Mat]:
         """
         Clean the image to improve OCR accuracy.
+        Optimized for novel text extraction with both small and large fonts.
         
         Args:
             image: Input image as numpy array
@@ -40,23 +41,30 @@ class TextExtractor:
             # Convert to grayscale
             gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
             
-            # Denoising
-            denoised = cv2.fastNlMeansDenoising(gray, None, h=10, templateWindowSize=7, searchWindowSize=21)
+            # Get image dimensions to adapt processing
+            height, width = gray.shape
             
-            # Adaptive thresholding
+            # Upscale small images to improve OCR on small fonts
+            # Tesseract works best with text height of 20-30 pixels
+            scale_factor = 1
+            if height < 500:
+                scale_factor = 2
+                gray = cv2.resize(gray, None, fx=scale_factor, fy=scale_factor, 
+                                 interpolation=cv2.INTER_CUBIC)
+            
+            # Light denoising - reduced strength to preserve small text details
+            denoised = cv2.fastNlMeansDenoising(gray, None, h=5, 
+                                                templateWindowSize=7, 
+                                                searchWindowSize=21)
+            
+            # Adaptive thresholding with larger block size for better text preservation
+            # Block size should be odd and larger for varied text sizes
+            block_size = 15 if scale_factor > 1 else 11
             thresh = cv2.adaptiveThreshold(denoised, 255, 
                                           cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
-                                          cv2.THRESH_BINARY, 11, 2)
+                                          cv2.THRESH_BINARY, block_size, 2)
             
-            # Morphological operations
-            kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
-            cleaned = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel)
-            
-            # Sharpening
-            kernel_sharp = np.array([[-1,-1,-1], [-1,9,-1], [-1,-1,-1]])
-            sharpened = cv2.filter2D(cleaned, -1, kernel_sharp)
-            
-            return sharpened
+            return thresh
         except Exception as e:
             logger.error(f"Image preprocessing failed: {e}")
             return None
