@@ -13,6 +13,12 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 class TextExtractor:
+    # Preprocessing constants for optimal OCR performance
+    MIN_HEIGHT_FOR_UPSCALE = 500  # Images smaller than this will be upscaled
+    UPSCALE_FACTOR = 2  # Factor to scale small images
+    BLOCK_SIZE_UPSCALED = 15  # Adaptive threshold block size for upscaled images
+    BLOCK_SIZE_NORMAL = 11  # Adaptive threshold block size for normal images
+    
     def __init__(self, lang: str = 'chi_sim', psm: int = 6, preprocess: bool = True):
         """
         Initialize the TextExtractor with configuration options.
@@ -47,8 +53,8 @@ class TextExtractor:
             # Upscale small images to improve OCR on small fonts
             # Tesseract works best with text height of 20-30 pixels
             scale_factor = 1
-            if height < 500:
-                scale_factor = 2
+            if height < self.MIN_HEIGHT_FOR_UPSCALE:
+                scale_factor = self.UPSCALE_FACTOR
                 gray = cv2.resize(gray, None, fx=scale_factor, fy=scale_factor, 
                                  interpolation=cv2.INTER_CUBIC)
             
@@ -59,7 +65,7 @@ class TextExtractor:
             
             # Adaptive thresholding with larger block size for better text preservation
             # Block size should be odd and larger for varied text sizes
-            block_size = 15 if scale_factor > 1 else 11
+            block_size = self.BLOCK_SIZE_UPSCALED if scale_factor > 1 else self.BLOCK_SIZE_NORMAL
             thresh = cv2.adaptiveThreshold(denoised, 255, 
                                           cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
                                           cv2.THRESH_BINARY, block_size, 2)
