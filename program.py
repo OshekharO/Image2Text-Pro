@@ -352,41 +352,62 @@ class TextExtractor:
             else:
                 return (image_file, False, 'no text extracted')
         
-        # Process images in parallel using ThreadPoolExecutor
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            # Submit all tasks
-            future_to_file = {
-                executor.submit(process_single_file, img): img 
-                for img in image_files
-            }
-            
-            # Collect results as they complete
-            for future in as_completed(future_to_file):
-                image_file, success, message = future.result()
-                
-                # Thread-safe update of stats and progress
-                with lock:
+        # Performance optimization: Pre-filter skipped files on the main thread when skip_existing is True.
+        # Avoids generating Futures and dispatching worker threads for files whose output already exists.
+        files_to_process = []
+        if skip_existing:
+            for img in image_files:
+                output_path = os.path.join(
+                    output_dir,
+                    f"{os.path.splitext(img)[0]}.txt"
+                )
+                if os.path.exists(output_path):
+                    stats['skipped'] += 1
                     processed_count += 1
+                else:
+                    files_to_process.append(img)
+        else:
+            files_to_process = image_files
+
+        if processed_count > 0:
+            logger.info(f"Skipped {stats['skipped']} already processed files upfront")
+
+        # Process remaining images in parallel using ThreadPoolExecutor
+        if files_to_process:
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                # Submit only unskipped tasks
+                future_to_file = {
+                    executor.submit(process_single_file, img): img
+                    for img in files_to_process
+                }
+
+                # Collect results as they complete
+                for future in as_completed(future_to_file):
+                    image_file, success, message = future.result()
                     
-                    if message == 'skipped':
-                        stats['skipped'] += 1
-                    elif success:
-                        stats['success'] += 1
-                    else:
-                        stats['failed'] += 1
-                        logger.warning(f"Failed: {image_file} - {message}")
-                    
-                    # Log progress at batch intervals or at completion
-                    if processed_count % batch_size == 0 or processed_count == len(image_files):
-                        elapsed = time.time() - start_time
-                        rate = processed_count / elapsed if elapsed > 0 else 0
-                        logger.info(
-                            f"Progress: {processed_count}/{len(image_files)} "
-                            f"({rate:.2f} img/s) | "
-                            f"OK: {stats['success']}, "
-                            f"Fail: {stats['failed']}, "
-                            f"Skip: {stats['skipped']}"
-                        )
+                    # Thread-safe update of stats and progress
+                    with lock:
+                        processed_count += 1
+
+                        if message == 'skipped':
+                            stats['skipped'] += 1
+                        elif success:
+                            stats['success'] += 1
+                        else:
+                            stats['failed'] += 1
+                            logger.warning(f"Failed: {image_file} - {message}")
+
+                        # Log progress at batch intervals or at completion
+                        if processed_count % batch_size == 0 or processed_count == len(image_files):
+                            elapsed = time.time() - start_time
+                            rate = processed_count / elapsed if elapsed > 0 else 0
+                            logger.info(
+                                f"Progress: {processed_count}/{len(image_files)} "
+                                f"({rate:.2f} img/s) | "
+                                f"OK: {stats['success']}, "
+                                f"Fail: {stats['failed']}, "
+                                f"Skip: {stats['skipped']}"
+                            )
         
         # Final summary
         total_time = time.time() - start_time

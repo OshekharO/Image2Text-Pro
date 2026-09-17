@@ -42,3 +42,30 @@ def test_extract_text_file_not_found():
     extractor = TextExtractor()
     result = extractor.extract_text("non_existent_file.jpg")
     assert result is None
+
+def test_process_images_skip_existing(monkeypatch):
+    extractor = TextExtractor()
+    # Mock extract_text to return dummy text without executing pytesseract
+    monkeypatch.setattr(extractor, 'extract_text', lambda img_path: "Extracted test text")
+
+    with tempfile.TemporaryDirectory() as input_dir, tempfile.TemporaryDirectory() as output_dir:
+        # Create dummy image files
+        img1 = os.path.join(input_dir, "page1.jpg")
+        img2 = os.path.join(input_dir, "page2.jpg")
+        open(img1, 'w').close()
+        open(img2, 'w').close()
+
+        # Pre-create output for page1.jpg
+        out1 = os.path.join(output_dir, "page1.txt")
+        open(out1, 'w').close()
+
+        # Test process_images with skip_existing=True
+        stats = extractor.process_images(input_dir, output_dir, skip_existing=True)
+        assert stats['total'] == 2
+        assert stats['skipped'] == 1
+        assert stats['success'] == 1
+        assert stats['failed'] == 0
+
+        # Verify page2.txt was generated
+        out2 = os.path.join(output_dir, "page2.txt")
+        assert os.path.exists(out2)
