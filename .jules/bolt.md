@@ -1,0 +1,4 @@
+## 2026-05-18 - Direct Grayscale Image Decoding in OpenCV
+
+**Learning:** Reading images with `cv2.imread(..., cv2.IMREAD_COLOR)` and later converting them via `cv2.cvtColor(..., cv2.COLOR_BGR2GRAY)` forces the underlying image decoder (libjpeg/libpng) to decode full 3-channel color data before discarding it. Using `cv2.IMREAD_GRAYSCALE` directly in `cv2.imread` decodes straight to 1-channel grayscale at the C/C++ decoder level, cutting image load time and peak memory usage by ~50%. Also, avoiding redundant `image.copy()` allocations when passing 2D grayscale arrays to non-mutating OpenCV functions further reduces memory overhead.
+**Action:** Default to `cv2.IMREAD_GRAYSCALE` when loading images for grayscale processing/OCR pipelines, and verify whether array copying is necessary before non-mutating image operations.
