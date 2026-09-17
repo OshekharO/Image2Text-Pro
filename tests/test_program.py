@@ -3,8 +3,11 @@ import tempfile
 import numpy as np
 import cv2
 import pytest
+import pytesseract
 from program import TextExtractor
 
+# Save original _validate_tesseract for testing
+_original_validate_tesseract = TextExtractor._validate_tesseract
 # Mock tesseract validation so tests can run without tesseract binary installed
 TextExtractor._validate_tesseract = lambda self: None
 
@@ -42,6 +45,63 @@ def test_extract_text_file_not_found():
     extractor = TextExtractor()
     result = extractor.extract_text("non_existent_file.jpg")
     assert result is None
+
+
+def test_validate_tesseract_error_handling(monkeypatch):
+    def mock_get_version():
+        raise Exception("Tesseract not found")
+
+    monkeypatch.setattr(pytesseract, "get_tesseract_version", mock_get_version)
+    extractor = TextExtractor.__new__(TextExtractor)
+    with pytest.raises(RuntimeError) as exc_info:
+        _original_validate_tesseract(extractor)
+    assert "Tesseract OCR is not properly installed or accessible" in str(exc_info.value)
+
+
+def test_extract_text_tesseract_error(monkeypatch, tmp_path):
+    extractor = TextExtractor()
+    img_path = str(tmp_path / "test.jpg")
+    img = np.ones((100, 100), dtype=np.uint8) * 255
+    cv2.imwrite(img_path, img)
+
+    def mock_image_to_string(*args, **kwargs):
+        raise pytesseract.TesseractError(1, "Tesseract failed")
+
+    monkeypatch.setattr(pytesseract, "image_to_string", mock_image_to_string)
+    result = extractor.extract_text(img_path)
+    assert result is None
+
+
+def test_extract_text_general_exception(monkeypatch, tmp_path):
+    extractor = TextExtractor()
+    img_path = str(tmp_path / "test.jpg")
+    img = np.ones((100, 100), dtype=np.uint8) * 255
+    cv2.imwrite(img_path, img)
+
+    def mock_image_to_string(*args, **kwargs):
+        raise Exception("Unexpected error")
+
+    monkeypatch.setattr(pytesseract, "image_to_string", mock_image_to_string)
+    result = extractor.extract_text(img_path)
+    assert result is None
+
+
+def test_process_images_invalid_directory():
+    extractor = TextExtractor()
+    stats = extractor.process_images("/path/does/not/exist/12345", "/tmp/out")
+    assert stats == {'total': 0, 'success': 0, 'failed': 0, 'skipped': 0}
+
+    with tempfile.NamedTemporaryFile() as tf:
+        stats_file = extractor.process_images(tf.name, "/tmp/out")
+        assert stats_file == {'total': 0, 'success': 0, 'failed': 0, 'skipped': 0}
+
+
+def test_process_images_empty_directory():
+    extractor = TextExtractor()
+    with tempfile.TemporaryDirectory() as empty_dir, tempfile.TemporaryDirectory() as out_dir:
+        stats = extractor.process_images(empty_dir, out_dir)
+        assert stats == {'total': 0, 'success': 0, 'failed': 0, 'skipped': 0}
+
 
 def test_process_images_skip_existing(monkeypatch):
     extractor = TextExtractor()
